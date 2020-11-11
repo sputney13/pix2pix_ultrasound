@@ -25,7 +25,7 @@ def discriminator_loss(disc_real_output, disc_gen_output):
     return (real_loss + gen_loss) / 2
 
 
-def generate_images(gen_model, input_image, target):
+def generate_images(gen_model, input_image, target, color = True):
     prediction = gen_model(input_image, training=True)
     prediction = (prediction-np.min(prediction))/(np.max(prediction)-np.min(prediction)) # normalized
     display_list = [input_image[0], target[0], prediction[0]]
@@ -35,7 +35,25 @@ def generate_images(gen_model, input_image, target):
     for i in range(3):
         plt.subplot(1, 3, i+1)
         plt.title(titles[i])
-        plt.imshow(tf.squeeze(display_list[i]))
+        if color:
+            plt.imshow(tf.squeeze(display_list[i]))
+        else:
+            plt.imshow(tf.squeeze(display_list[i]), cmap='gray')
+        plt.axis('off')
+    plt.show()
+
+
+def show_segmentations(model, input_image, mask):
+    titles = ['Input Image', 'Ground Truth', 'Predicted Image']
+
+    pred_mask = model.predict(input_image)
+    pred_mask = tf.argmax(pred_mask, axis = -1)[..., tf.newaxis]
+    display_list = [input_image[0], mask[0], pred_mask[0]]
+
+    for i in range(3):
+        plt.subplot(1, 3, i+1)
+        plt.title(titles[i])
+        plt.imshow(tf.squeeze(display_list[i]), cmap='gray')
         plt.axis('off')
     plt.show()
 
