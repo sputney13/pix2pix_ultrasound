@@ -2,11 +2,18 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
+generator = None
+discriminator = None
+gen_optimizer = None
+disc_optimizer = None
+
 
 def set_optimizers(lr = 0.002, beta_1 = 0.5):
+    global gen_optimizer
+    global disc_optimizer
+
     gen_optimizer = tf.keras.optimizers.Adam(lr, beta_1 = beta_1)
     disc_optimizer = tf.keras.optimizers.Adam(lr, beta_1 = beta_1)
-    return gen_optimizer, disc_optimizer
 
 
 def generator_loss(disc_gen_output, gen_output, target, LAMBDA):
@@ -58,13 +65,40 @@ def show_segmentations(model, input_image, mask):
     plt.show()
 
 
-def fit(train_ds, generator, discriminator, epochs, test_ds = None, **kwargs):
-    
+@tf.function
+def train_step(input_image, target_image):
+
+    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+        gen_output = generator(input_image, training=True)
+
+        disc_real_output = discriminator([input_image, target_image], training=True)
+        disc_gen_output = discriminator([input_image, gen_output], training=True)
+
+        gen_loss = generator_loss(disc_gen_output, gen_output, target_image, LAMBDA)
+        disc_loss = discriminator_loss(disc_real_output, disc_gen_output)
+
+    gen_gradients = gen_tape.gradient(gen_loss, generator.trainable_variables)
+    disc_gradients = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
+
+    gen_optimizer.apply_gradients(zip(gen_gradients, generator.trainable_variables))
+    disc_optimizer.apply_gradients(zip(disc_gradients, discriminator.trainable_variables))
+
+    return gen_loss, disc_loss
+
+
+def fit(train_ds, gen, disc, epochs, test_ds = None, **kwargs):
+    global generator
+    global discriminator
+    global LAMBDA
+
+    generator = gen
+    discriminator = disc
+
     lr = kwargs.get('lr', 0.002)
     beta_1 = kwargs.get('beta_1', 0.5)
     LAMBDA = kwargs.get('LAMBDA', 100)
     
-    gen_optimizer, disc_optimizer = set_optimizers(lr, beta_1)
+    set_optimizers(lr, beta_1)
 
     for epoch in range(epochs):
         
@@ -78,22 +112,8 @@ def fit(train_ds, generator, discriminator, epochs, test_ds = None, **kwargs):
                 generate_images(generator, example_input, example_target)
 
         for _, (input_image, target) in train_ds.enumerate():
-            
-            with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-                gen_output = generator(input_image, training=True)
-
-                disc_real_output = discriminator([input_image, target], training=True)
-                disc_gen_output = discriminator([input_image, gen_output], training=True)
-
-                gen_loss = generator_loss(disc_gen_output, gen_output, target, LAMBDA)
-                disc_loss = discriminator_loss(disc_real_output, disc_gen_output)
-
-            gen_gradients = gen_tape.gradient(gen_loss, generator.trainable_variables)
-            disc_gradients = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
-
-            gen_optimizer.apply_gradients(zip(gen_gradients, generator.trainable_variables))
-            disc_optimizer.apply_gradients(zip(disc_gradients, discriminator.trainable_variables))
+            gen_loss, disc_loss = train_step(input_image, target)
         
         print("Generator Loss: {}, Discriminator Loss: {}".format(gen_loss, disc_loss))
-    
+
     return generator, discriminator
